@@ -1,0 +1,49 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+env/
+venv/
+
+# IDEs and editors
+.vscode/
+.idea/
+*.sw?
+
+# Environment variables
+.env
+.env.*
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Logs and debug
+*.log
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*.swo
+*.~ 
+*.temp
+*.~*
+
+# Test output or data dumps
+*.out
+*.pdf~
+*.docx~
+*.txt~
+
+# pipenv, poetry, or other package managers (if you use them)
+Pipfile.lock
+poetry.lock
+
+# FastAPI specific
+*.db
+instance/
+uploads/
