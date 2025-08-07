@@ -3,6 +3,7 @@ import whisper
 import yt_dlp
 import shutil
 from app.utils.extractors import extract_text_from_pdf, extract_text_from_docx
+os.environ["PATH"] += os.pathsep + os.getcwd()
 
 # os.environ["PATH"] += os.pathsep + r"C:\Users\Yashal Rafique\Downloads\ffmpeg-7.1.1-essentials_build\ffmpeg-7.1.1-essentials_build\bin"
 

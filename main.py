@@ -5,7 +5,7 @@ from app.routes.upload import router
 load_dotenv()
 
 app = FastAPI()
-
+print("cahneg in github")
 # CORS (frontend integration)
 app.add_middleware(
     CORSMiddleware,
