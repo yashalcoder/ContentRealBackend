@@ -1,9 +1,10 @@
 import os, tempfile
 import whisper
 import yt_dlp
+import shutil
 from app.utils.extractors import extract_text_from_pdf, extract_text_from_docx
 
-os.environ["PATH"] += os.pathsep + r"C:\Users\Yashal Rafique\Downloads\ffmpeg-7.1.1-essentials_build\ffmpeg-7.1.1-essentials_build\bin"
+# os.environ["PATH"] += os.pathsep + r"C:\Users\Yashal Rafique\Downloads\ffmpeg-7.1.1-essentials_build\ffmpeg-7.1.1-essentials_build\bin"
 
 AUDIO_EXTENSIONS = [".mp3", ".wav", ".m4a", ".webm"]
 VIDEO_EXTENSIONS = [".mp4", ".mkv", ".avi", ".mov"]
@@ -23,8 +24,8 @@ async def handle_file_upload(file, fileType, youtubeUrl):
                     'preferredquality': '192',
                 }],
                 'quiet': True,
+                'ffmpeg_location': shutil.which('ffmpeg'),  # ✅ Ye line add karo
             }
-
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(youtubeUrl, download=True)
