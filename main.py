@@ -2,6 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from app.routes.upload import router  
+from app.routes.auth import router as auth_router
+from app.routes.posts import router as post_router
 load_dotenv()
 
 app = FastAPI()
@@ -17,7 +19,8 @@ app.add_middleware(
 
 # Routes
 app.include_router(router, prefix="/api")  # Use 'router'
-
+app.include_router(auth_router,prefix="/auth", tags=["Auth"])
+app.include_router(post_router)
 @app.get("/")
 def root():
     return {"msg": "Backend running successfully"}
