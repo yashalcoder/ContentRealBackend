@@ -1,1 +1,20 @@
-run = "uvicorn main:app --host=0.0.0.0 --port=4000"
+run = "uvicorn main:app --host=0.0.0.0 --port=8000"
+modules = ["python-3.12"]
+
+[deployment]
+run = ["sh", "-c", "uvicorn main:app --host=0.0.0.0 --port=8000"]
+# deploymentTarget = "cloudrun"
+build = ["sh", "-c", "pip install -r requirements.txt"]
+deploymentTarget = "cloudrun"
+
+[nix]
+channel = "stable-25_05"
+packages = ["cacert", "cargo", "ffmpeg-full", "glibcLocales", "libcxx", "libiconv", "libxcrypt", "llvm", "rustc", "xcodebuild", "zlib"]
+
+[[ports]]
+localPort = 8000
+externalPort = 80
+
+[[ports]]
+localPort = 8000
+externalPort = 8000
