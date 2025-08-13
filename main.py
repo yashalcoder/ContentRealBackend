@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from app.routes.upload import router  
 from app.routes.auth import router as auth_router
 from app.routes.posts import router as post_router
+from app.routes.schedulePosts import router as schedule_router
 load_dotenv()
 
 app = FastAPI()
@@ -21,6 +22,7 @@ app.add_middleware(
 app.include_router(router, prefix="/api")  # Use 'router'
 app.include_router(auth_router,prefix="/auth", tags=["Auth"])
 app.include_router(post_router)
+app.include_router(schedule_router)
 @app.get("/")
 def root():
     return {"msg": "Backend running successfully"}
