@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, Request, HTTPException
 from fastapi.responses import JSONResponse
+from datetime import datetime, timezone
 from app.database import get_db_connection
-from app.services.schedule import get_connected_platforms, save_platform_token, ayrshare_callback, publish_to_ayrshare
+from app.services.schedule import get_connected_platforms, save_platform_token, ayrshare_callback, publish_to_ayrshare,get_user_profile_key,create_ayrshare_profile
 from app.models.schemas import (
     PlatformToken, SchedulePostRequest, DisconnectPlatformRequest, 
     InstantPostRequest, ConnectedPlatformsListResponse, APIResponse
@@ -32,26 +33,75 @@ async def ayrshare_callback_route(request: Request):
     """Handle Ayrshare callback after platform connection"""
     return await ayrshare_callback(request)
 
+
+
+def get_platform_profile_keys(user_id: int, platforms: List[str]):
+    """Get profile keys for specific platforms for a user"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute(
+            '''SELECT platform, profile_key FROM "usersconnectedplatforms" 
+               WHERE user_id = %s AND platform = ANY(%s)''',
+            (user_id, platforms)
+        )
+        
+        results = cursor.fetchall()
+        return {platform: profile_key for platform, profile_key in results}
+        
+    except Exception as e:
+        print(f"Error getting profile keys: {e}")
+        return {}
+    finally:
+        cursor.close()
+        conn.close()
+
 @router.get("/connect-platform/{platform}")
 async def connect_platform(platform: str, user_id: int, request: Request):
-    """Generate Ayrshare connection URL for a platform"""
+    """Generate Ayrshare JWT URL for connecting a platform - FIXED VERSION"""
     try:
         if platform not in ["facebook", "instagram", "linkedin", "twitter"]:
             raise HTTPException(status_code=400, detail="Invalid platform")
         
-        # Build callback URL
-        base_url = "https://a1b2c3d4.ngrok-free.app"  # ngrok ka public URL yaha daalna
-
-        # base_url = f"{request.url.scheme}://{request.url.netloc}"
-        callback_url = f"{base_url}/api/ayrshare/callback?user_id={user_id}&platform={platform}"
+        base_url = "https://1fbca9e95506.ngrok-free.app"  # Replace with your actual domain
+        callback_url = f"{base_url}/ayrshare/callback?user_id={user_id}&platform={platform}"
         
-        # Ayrshare connection URL
-        ayrshare_connect_url = f"https://app.ayrshare.com/connect?apiKey={AYRSHARE_API_KEY}&platform={platform}&callbackUrl={callback_url}"
+        # Get or create profile key for user
+        profile_key = get_user_profile_key(user_id)
+        
+        if not profile_key:
+            # Create new profile
+            profile_key = create_ayrshare_profile(user_id)
+        
+        # Generate JWT URL for social linking
+        jwt_data = {
+            "domain": base_url,
+            "redirectUri": callback_url,
+            "platforms": [platform]
+        }
+        
+        jwt_response = requests.post(
+            "https://app.ayrshare.com/api/profiles/generateJWT",
+            headers={
+                "Authorization": f"Bearer {AYRSHARE_API_KEY}",
+                "Profile-Key": profile_key,
+                "Content-Type": "application/json"
+            },
+            json=jwt_data
+        )
+        
+        if jwt_response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Failed to generate JWT URL")
+        
+        jwt_url = jwt_response.json().get("url")
         
         return {
             "status": "success",
-            "connect_url": ayrshare_connect_url
+            "connect_url": jwt_url,
+            "profile_key": profile_key
         }
+        
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
@@ -105,17 +155,19 @@ async def schedule_post(request: Request):
         platforms = data.get("platforms", [])
         scheduled_at = data.get("scheduled_at")
         
-        if not all([user_id, content, platforms, scheduled_at]):
+        if not all([user_id, content_id, platforms, scheduled_at]):
             raise HTTPException(status_code=400, detail="Missing required fields")
         
         # Parse scheduled datetime
         try:
+
             scheduled_datetime = datetime.fromisoformat(scheduled_at.replace('Z', '+00:00'))
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid datetime format")
         
         # Check if scheduled time is in the future
-        if scheduled_datetime <= datetime.now():
+        now_utc = datetime.now(timezone.utc)
+        if scheduled_datetime <= now_utc:
             raise HTTPException(status_code=400, detail="Scheduled time must be in the future")
         
         conn = get_db_connection()

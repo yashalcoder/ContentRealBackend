@@ -8,6 +8,9 @@ import openai
 from app.database import get_db_connection
 from app.utils.JWT import get_current_user
 from fastapi import  Depends
+from dotenv import load_dotenv
+load_dotenv()
+print("openai key", os.getenv("OPENAI_API_KEY") )
 os.environ["PATH"] += os.pathsep + os.getcwd()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 # os.environ["PATH"] += os.pathsep + r"C:\Users\Yashal Rafique\Downloads\ffmpeg-7.1.1-essentials_build\ffmpeg-7.1.1-essentials_build\bin"
@@ -27,7 +30,93 @@ def generate_post_with_ai(extracted_text: str) -> str:
     )
     return response.choices[0].message.content.strip()
 
+import openai
+from typing import List
+import json
 
+def extract_content_topics_and_summary(extracted_text: str) -> tuple:
+    """Extract topics and create summary using AI"""
+    try:
+        # Extract topics
+        topics_prompt = f"""
+        Analyze this content and extract 3-5 main topics/themes. Return only a JSON array of topics.
+        Content: {extracted_text[:1000]}...
+        
+        Example format: ["leadership", "motivation", "business strategy"]
+        """
+        
+        topics_response = openai.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a content analyst. Return only valid JSON."},
+                {"role": "user", "content": topics_prompt}
+            ],
+            max_tokens=100
+        )
+        
+        topics = json.loads(topics_response.choices[0].message.content.strip())
+        
+        # Create summary
+        summary_prompt = f"""
+        Create a brief 2-3 sentence summary of this content highlighting the key insights:
+        {extracted_text[:1500]}...
+        """
+        
+        summary_response = openai.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a content summarizer."},
+                {"role": "user", "content": summary_prompt}
+            ],
+            max_tokens=150
+        )
+        
+        summary = summary_response.choices[0].message.content.strip()
+        
+        return topics, summary
+        
+    except Exception as e:
+        print(f"AI analysis error: {e}")
+        return [], "Content analysis pending..."
+
+def save_content_analytics(content_id: int, extracted_text: str):
+    """Save AI analysis of content"""
+    try:
+        topics, summary = extract_content_topics_and_summary(extracted_text)
+        
+        # Simple sentiment analysis (you can use a proper sentiment library)
+        sentiment_words = ['great', 'excellent', 'amazing', 'wonderful', 'fantastic', 'love', 'best']
+        negative_words = ['bad', 'terrible', 'awful', 'hate', 'worst', 'horrible']
+        
+        text_lower = extracted_text.lower()
+        positive_count = sum(1 for word in sentiment_words if word in text_lower)
+        negative_count = sum(1 for word in negative_words if word in text_lower)
+        sentiment_score = (positive_count - negative_count) / max(len(extracted_text.split()), 1)
+        
+        # Engagement prediction (simple heuristic)
+        engagement_factors = {
+            'questions': text_lower.count('?') * 0.1,
+            'exclamations': text_lower.count('!') * 0.05,
+            'call_to_action': len([word for word in ['subscribe', 'share', 'comment', 'like'] if word in text_lower]) * 0.15,
+            'length': min(len(extracted_text) / 1000, 1) * 0.3
+        }
+        engagement_prediction = min(sum(engagement_factors.values()) + 0.5, 1.0)
+        
+        # Save to database
+        conn = get_db_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO content_analytics (content_id, topics, sentiment_score, engagement_prediction, ai_summary)
+                VALUES (%s, %s, %s, %s, %s)
+            ''', (content_id, json.dumps(topics), sentiment_score, engagement_prediction, summary))
+            conn.commit()
+        finally:
+            cursor.close()
+            conn.close()
+            
+    except Exception as e:
+        print(f"Error saving content analytics: {e}")
 
 async def handle_file_upload(file, fileType, youtubeUrl,current_user):
     user_id = current_user["id"]  # JWT payload se ID
@@ -104,6 +193,11 @@ async def handle_file_upload(file, fileType, youtubeUrl,current_user):
             (fileType, source_url, post_content,user_id,title)
         )
         post_id = cursor.fetchone()[0]
+        if post_id:
+            try:
+                save_content_analytics(post_id, extracted_text)
+            except Exception as e:
+                print(f"Background analytics failed: {e}")
         conn.commit()
     except Exception as e:
         conn.rollback()

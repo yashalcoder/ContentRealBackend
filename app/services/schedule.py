@@ -6,9 +6,8 @@ from typing import List
 import requests
 import os
 import json
-
-
-AYRSHARE_API_KEY = os.getenv("AYRSHARE_API_KEY")  # from your Ayrshare dashboard
+AYRSHARE_API_KEY="34308F88-FFBF4D4C-AD086DC0-B6E7333A"
+# AYRSHARE_API_KEY = os.getenv("AYRSHARE_API_KEY")
 AYRSHARE_API_URL = "https://app.ayrshare.com/api/post"
 
 def get_connected_platforms(user_id: int):
@@ -17,9 +16,7 @@ def get_connected_platforms(user_id: int):
     cursor = conn.cursor()
     try:
         cursor.execute(
-            '''SELECT platform 
-               FROM "usersconnectedplatforms" 
-               WHERE user_id = %s''',
+            '''SELECT platform FROM "usersconnectedplatforms" WHERE user_id = %s''',
             (user_id,)
         )
         rows = cursor.fetchall()
@@ -50,17 +47,94 @@ def save_platform_token(data: PlatformToken):
         cursor.close()
         conn.close()
 
+def get_user_profile_key(user_id: int):
+    """Get existing profile key for a user (FIXED VERSION)"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            '''SELECT profile_key FROM "usersconnectedplatforms" 
+               WHERE user_id = %s LIMIT 1''',
+            (user_id,)
+        )
+        result = cursor.fetchone()
+        return result[0] if result else None
+    except Exception as e:
+        print(f"Error getting profile key: {e}")
+        return None
+    finally:
+        cursor.close()
+        conn.close()
 
-def publish_to_ayrshare(content: str, media_url: str, profile_keys: list):
-    """Publish content to social media platforms via Ayrshare"""
-    payload = {
-        "post": content,
-        "platforms": profile_keys,  # These should be the profile keys from connected platforms
-    }
+def create_ayrshare_profile(user_id: int):
+    """Create a new Ayrshare profile for user"""
+    try:
+        profile_data = {"title": f"User {user_id} Profile"}
+        
+        response = requests.post(
+            "https://app.ayrshare.com/api/profiles/profile",
+            headers={
+                "Authorization": f"Bearer {AYRSHARE_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json=profile_data
+        )
+        
+        if response.status_code == 201:
+            return response.json().get("profileKey")
+        elif response.status_code == 409:
+            # Profile already exists, try to get existing one
+            existing_key = get_user_profile_key(user_id)
+            if existing_key:
+                return existing_key
+            else:
+                raise Exception("Profile exists but no key found in database")
+        else:
+            raise Exception(f"Failed to create profile: {response.text}")
+            
+    except Exception as e:
+        raise Exception(f"Error creating Ayrshare profile: {str(e)}")
+import requests
+import json
+from typing import List
+
+# Global API key from .env
+AYRSHARE_API_KEY = "34308F88-FFBF4D4C-AD086DC0-B6E7333A"
+AYRSHARE_API_URL = "https://api.ayrshare.com/api/post"
+# publish_to_ayrshare(content: str, media_url: str, profile_keys: list):
+#  """Publish content to social media platforms via Ayrshare""" 
+# payload = { "post": content, "profileKeys": profile_keys,
+#  # Use profileKeys instead of platforms } 
+# if media_url:
+#  payload["mediaUrls"] = [media_url] headers = { "Authorization": f"Bearer {AYRSHARE_API_KEY}", "Content-Type": "application/json" }
+#  try: response = requests.post(AYRSHARE_API_URL, json=payload, headers=headers) if response.status_code == 200: 
+# return {"status": "success", "data": response.json()}
+#  else: return {"status": "error", "message": f"Ayrshare API error: {response.text}"}
+#  except requests.exceptions.RequestException as e: return {"status": "error", "message": f"Request failed:
+def publish_to_ayrshare(content: str, media_url: str = None, platforms: List[str] = None, profile_keys: List[str] = None):
+    """
+    Publish content to social media via Ayrshare.
     
-    # Add media if provided
-    if media_url:
-        payload["mediaUrls"] = [media_url]
+    Logic:
+    - If profile_keys provided (paid plan) => use them
+    - Else (free plan/testing) => use global API key + platforms
+    """
+    if profile_keys:
+        # Paid plan, use profile keys
+        payload = {
+            "post": content,
+            "profileKeys": profile_keys
+        }
+        if media_url:
+            payload["mediaUrls"] = [media_url]
+    else:
+        # Free plan / testing, use global API key with platforms
+        payload = {
+            "post": content,
+            "platforms": platforms or ["linkedin"]  # Default to LinkedIn if not specified
+        }
+        if media_url:
+            payload["mediaUrls"] = [media_url]
 
     headers = {
         "Authorization": f"Bearer {AYRSHARE_API_KEY}",
@@ -69,7 +143,6 @@ def publish_to_ayrshare(content: str, media_url: str, profile_keys: list):
 
     try:
         response = requests.post(AYRSHARE_API_URL, json=payload, headers=headers)
-        
         if response.status_code == 200:
             return {"status": "success", "data": response.json()}
         else:
@@ -79,7 +152,7 @@ def publish_to_ayrshare(content: str, media_url: str, profile_keys: list):
 
 
 def publish_pending_posts():
-    """Background task to publish scheduled posts - matches your scheduledposts table structure"""
+    """Background task to publish scheduled posts"""
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
@@ -87,7 +160,7 @@ def publish_pending_posts():
         cursor.execute(
             '''SELECT id, user_id, content, media_url, platforms
                FROM "scheduledposts"
-               WHERE status = 'pending' AND scheduled_at <= NOW()''',
+               WHERE status = 'pending' AND scheduled_at <= NOW()'''
         )
         posts = cursor.fetchall()
 
@@ -102,20 +175,19 @@ def publish_pending_posts():
 
             # Fetch profile keys for each platform for this user
             cursor.execute(
-                '''SELECT profile_key 
-                   FROM "usersconnectedplatforms"
+                '''SELECT profile_key FROM "usersconnectedplatforms"
                    WHERE user_id = %s AND platform = ANY(%s)''',
                 (user_id, platforms)
             )
+            
             profile_key_rows = cursor.fetchall()
             profile_keys = [r[0] for r in profile_key_rows]
 
             if not profile_keys:
                 print(f"No profile keys found for user {user_id} and platforms {platforms}")
-                # Update status to failed
                 cursor.execute(
                     '''UPDATE "scheduledposts" 
-                       SET status = 'failed'
+                       SET status = 'failed', error_message = 'No connected platforms found'
                        WHERE id = %s''',
                     (post_id,)
                 )
@@ -123,10 +195,9 @@ def publish_pending_posts():
                 continue
 
             # Publish to Ayrshare
-            result = publish_to_ayrshare(content, media_url, profile_keys)
+            result = publish_to_ayrshare(content, media_url, profile_keys=None)
 
             if result["status"] == "success":
-                # Update status to posted
                 post_ids_json = json.dumps(result["data"].get("postIds", {}))
                 cursor.execute(
                     '''UPDATE "scheduledposts" 
@@ -137,15 +208,14 @@ def publish_pending_posts():
                 conn.commit()
                 print(f"Successfully posted scheduled post {post_id} for user {user_id}")
             else:
-                # Update status to failed
                 cursor.execute(
                     '''UPDATE "scheduledposts" 
-                       SET status = 'failed'
+                       SET status = 'failed', error_message = %s
                        WHERE id = %s''',
-                    (post_id,)
+                    (result["message"], post_id)
                 )
                 conn.commit()
-                print(f"Error posting scheduled post {post_id} for user {user_id}: {result['message']}")
+                print(f"Error posting scheduled post {post_id}: {result['message']}")
 
     except Exception as e:
         print("Error in publish_pending_posts:", e)
@@ -162,7 +232,7 @@ async def ayrshare_callback(request):
     params = dict(request.query_params)
     profile_key = params.get("profileKey")
     platform = params.get("platform")
-    user_id = params.get("user_id")  # Pass this in the initial connect URL
+    user_id = params.get("user_id")
 
     if not profile_key or not platform or not user_id:
         return {"status": "error", "message": "Missing required parameters"}
@@ -171,7 +241,6 @@ async def ayrshare_callback(request):
     cursor = conn.cursor()
 
     try:
-        # Save the platform connection to usersconnectedplatforms table
         cursor.execute(
             '''INSERT INTO "usersconnectedplatforms" (user_id, platform, profile_key)
                VALUES (%s, %s, %s)
@@ -181,106 +250,8 @@ async def ayrshare_callback(request):
         )
         conn.commit()
         
-        return {
-            "status": "success",
-            "message": f"{platform} connected successfully"
-        }
+        return {"status": "success", "message": f"{platform} connected successfully"}
         
-    except Exception as e:
-        conn.rollback()
-        return {"status": "error", "message": str(e)}
-    finally:
-        cursor.close()
-        conn.close()
-
-
-def get_user_analytics(user_id: int):
-    """Get analytics for a user's posts and schedules"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    try:
-        # Get connected platforms count
-        cursor.execute(
-            '''SELECT COUNT(*) FROM "usersconnectedplatforms" WHERE user_id = %s''',
-            (user_id,)
-        )
-        connected_platforms = cursor.fetchone()[0]
-        
-        # Get scheduled posts stats
-        cursor.execute(
-            '''SELECT status, COUNT(*) FROM "scheduledposts" 
-               WHERE user_id = %s GROUP BY status''',
-            (user_id,)
-        )
-        status_counts = dict(cursor.fetchall())
-        
-        # Get total content created
-        cursor.execute(
-            '''SELECT COUNT(*) FROM "Content" WHERE "UserId" = %s''',
-            (user_id,)
-        )
-        total_content = cursor.fetchone()[0]
-        
-        return {
-            "status": "success",
-            "analytics": {
-                "connected_platforms": connected_platforms,
-                "total_content": total_content,
-                "scheduled_posts": status_counts.get('pending', 0),
-                "published_posts": status_counts.get('posted', 0),
-                "failed_posts": status_counts.get('failed', 0)
-            }
-        }
-        
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-    finally:
-        cursor.close()
-        conn.close()
-
-
-def get_platform_profile_keys(user_id: int, platforms: List[str]):
-    """Get profile keys for specific platforms for a user"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    try:
-        cursor.execute(
-            '''SELECT platform, profile_key FROM "usersconnectedplatforms" 
-               WHERE user_id = %s AND platform = ANY(%s)''',
-            (user_id, platforms)
-        )
-        
-        results = cursor.fetchall()
-        return {platform: profile_key for platform, profile_key in results}
-        
-    except Exception as e:
-        print(f"Error getting profile keys: {e}")
-        return {}
-    finally:
-        cursor.close()
-        conn.close()
-
-
-def delete_scheduled_post(post_id: int, user_id: int):
-    """Delete a scheduled post"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    try:
-        cursor.execute(
-            '''DELETE FROM "scheduledposts" 
-               WHERE id = %s AND user_id = %s AND status = 'pending' ''',
-            (post_id, user_id)
-        )
-        conn.commit()
-        
-        if cursor.rowcount > 0:
-            return {"status": "success", "message": "Scheduled post deleted"}
-        else:
-            return {"status": "error", "message": "Post not found or already published"}
-            
     except Exception as e:
         conn.rollback()
         return {"status": "error", "message": str(e)}
