@@ -233,21 +233,18 @@ async def get_scheduled_posts(user_id: int):
             
             scheduled_posts = []
             for post in posts:
-                # Parse JSONB fields
-                platforms = post[4] if isinstance(post[4], list) else json.loads(post[4]) if post[4] else []
-                post_ids = post[7] if isinstance(post[7], dict) else json.loads(post[7]) if post[7] else None
-                
                 scheduled_posts.append({
                     "id": post[0],
                     "user_id": post[1],
                     "content": post[2],
                     "media_url": post[3],
-                    "platforms": platforms,
+                    "platforms": post[4] or [],   # Directly use JSONB
                     "scheduled_at": post[5].isoformat() if post[5] else None,
                     "status": post[6],
-                    "post_ids": post_ids,
+                    "post_ids": post[7] or None,  # Directly use JSONB
                     "created_at": post[8].isoformat() if post[8] else None
                 })
+
             
             return {
                 "status": "success",
