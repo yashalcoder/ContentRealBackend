@@ -500,7 +500,24 @@ def generate_post_with_ai(extracted_text: str,no_of_posts:int) -> str:
     try:
         print("noi of psots",no_of_posts)
        
-        prompt = f"Write  {no_of_posts} short, engaging social media post based on this content:\n\n{extracted_text[:1000]}"
+        prompt = f"""Write {no_of_posts} short, engaging social media posts based on this content.
+
+        Format your response EXACTLY like this:
+        Post 1:
+        [first post content here]
+
+        Post 2:
+        [second post content here]
+
+        Post 3:
+        [third post content here]
+
+        And so on for all {no_of_posts} posts.
+
+        Content to base posts on:
+        {extracted_text[:1000]}
+
+        Remember: Each post must start with "Post X:" on its own line."""
         response = openai.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
@@ -509,6 +526,7 @@ def generate_post_with_ai(extracted_text: str,no_of_posts:int) -> str:
             ],
             max_tokens=300
         )
+        print(response.choices[0].message.content.strip())
         return response.choices[0].message.content.strip()
     except Exception as e:
         print(f"Error generating post: {e}")
@@ -1393,6 +1411,9 @@ async def handle_file_upload(file, fileType, youtubeUrl, current_user,no_of_post
     is_video_content = False
 
     # Handle YouTube video transcription
+    # Enhanced YouTube download section with bot protection bypass
+# Replace your YouTube section in handle_file_upload() with this:
+
     if fileType == "youtube" and youtubeUrl:
         source_url = youtubeUrl
         temp_dir = tempfile.mkdtemp(prefix="youtube_download_")
@@ -1400,204 +1421,219 @@ async def handle_file_upload(file, fileType, youtubeUrl, current_user,no_of_post
         try:
             print(f"🎬 Processing YouTube URL: {youtubeUrl}")
             
-            # Enhanced format options with better fallbacks
+            # Base options that work across all strategies
+            base_opts = {
+                'quiet': False,
+                'no_warnings': False,
+                'ignoreerrors': False,
+                'ffmpeg_location': shutil.which('ffmpeg'),
+                
+                # Network and retry options
+                'retries': 10,
+                'fragment_retries': 10,
+                'socket_timeout': 60,
+                'http_chunk_size': 10485760,
+                
+                # CRITICAL: Use cookies file
+                'cookiefile': '/root/cookies.txt',  # Update this path!
+                
+                # Enhanced user agent
+                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                
+                # Enhanced extractor args with more client options
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': [
+                            'android_creator',
+                            'android_vr', 
+                            'android_music',
+                            'android_embedded',
+                            'android',
+                            'web',
+                            'mweb',
+                            'tv_embedded'
+                        ],
+                        'player_skip': ['webpage', 'configs', 'js'],
+                        'skip': ['hls', 'dash'],
+                    }
+                },
+                
+                # Better headers
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-us,en;q=0.5',
+                    'Accept-Encoding': 'gzip,deflate',
+                    'Connection': 'keep-alive',
+                    'Upgrade-Insecure-Requests': '1',
+                    'Sec-Fetch-Dest': 'document',
+                    'Sec-Fetch-Mode': 'navigate',
+                    'Sec-Fetch-Site': 'none',
+                    'Cache-Control': 'max-age=0',
+                },
+                
+                # Disable unnecessary features
+                'writeinfojson': False,
+                'writesubtitles': False,
+                'writeautomaticsub': False,
+                'writethumbnail': False,
+                'writedescription': False,
+                
+                # Add random sleep to avoid rate limiting
+                'sleep_interval': 2,
+                'max_sleep_interval': 5,
+            }
+            
+            # Format strategies with adjusted priorities
             format_strategies = [
-                # Strategy 1: Try best available with height limit
                 {
-                    'format': 'best[height<=720][ext=mp4]/best[height<=480][ext=mp4]/best[ext=mp4]/best',
-                    'description': 'Best quality MP4 (720p or lower)'
+                    'format': 'best[height<=720][ext=mp4]/best[height<=480][ext=mp4]/best[ext=mp4]',
+                    'description': 'Best quality MP4 (720p or lower)',
+                    'merge_output_format': 'mp4'
                 },
-                # Strategy 2: Audio + Video merge
                 {
-                    'format': 'bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[ext=mp4]/best',
-                    'description': 'Merge best video + audio'
+                    'format': 'bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio',
+                    'description': 'Merge best video + audio',
+                    'merge_output_format': 'mp4'
                 },
-                # Strategy 3: Any available format
                 {
-                    'format': 'worst[height>=360]/worst',
-                    'description': 'Lowest quality available'
+                    'format': 'worst[height>=360][ext=mp4]/worst[ext=mp4]',
+                    'description': 'Lower quality MP4',
+                    'merge_output_format': 'mp4'
                 },
-                # Strategy 4: Audio only fallback
                 {
-                    'format': 'bestaudio[ext=m4a]/bestaudio/best[acodec^=mp4a]',
-                    'description': 'Audio only'
+                    'format': 'bestaudio[ext=m4a]/bestaudio',
+                    'description': 'Audio only fallback',
+                    'postprocessors': [{
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'm4a',
+                    }]
                 },
-                # Strategy 5: Generic best
                 {
                     'format': 'best',
-                    'description': 'Best available format'
+                    'description': 'Best available (any format)',
+                    'merge_output_format': 'mp4'
                 }
             ]
             
             download_success = False
             
+            # Add delay before first attempt to avoid immediate bot detection
+            import time
+            time.sleep(2)
+            
             for i, strategy in enumerate(format_strategies):
                 try:
-                    print(f"📥 Attempting strategy {i+1}: {strategy['description']}")
+                    print(f"📥 Attempting strategy {i+1}/{len(format_strategies)}: {strategy['description']}")
                     
-                    # Enhanced yt-dlp options
-                    ydl_opts = {
-                        'format': strategy['format'],
-                        'outtmpl': os.path.join(temp_dir, f'video_attempt_{i}.%(ext)s'),
-                        'quiet': False,
-                        'no_warnings': False,
-                        'ignoreerrors': False,
-                        'ffmpeg_location': shutil.which('ffmpeg'),
-                        
-                        # Network and retry options
-                        'retries': 5,
-                        'fragment_retries': 5,
-                        'socket_timeout': 60,
-                        'http_chunk_size': 10485760,  # 10MB chunks
-                        
-                        # User agent rotation
-                        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                        
-                        # Additional options to bypass restrictions
-                        'extractor_args': {
-                            'youtube': {
-                                'player_client': ['android', 'web'],
-                                'player_skip': ['webpage', 'configs'],
-                            }
-                        },
-                        
-                        # Headers to appear more like a browser
-                        'http_headers': {
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                            'Accept-Language': 'en-us,en;q=0.5',
-                            'Accept-Encoding': 'gzip,deflate',
-                            'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.7',
-                            'Connection': 'keep-alive',
-                        },
-                        
-                        # Disable metadata writing to speed up
-                        'writeinfojson': False,
-                        'writesubtitles': False,
-                        'writeautomaticsub': False,
-                        'writethumbnail': False,
-                        'writedescription': False,
-                    }
+                    # Merge base options with strategy-specific options
+                    ydl_opts = {**base_opts}
+                    ydl_opts['format'] = strategy['format']
+                    ydl_opts['outtmpl'] = os.path.join(temp_dir, f'video_attempt_{i}.%(ext)s')
+                    
+                    if 'merge_output_format' in strategy:
+                        ydl_opts['merge_output_format'] = strategy['merge_output_format']
+                    if 'postprocessors' in strategy:
+                        ydl_opts['postprocessors'] = strategy['postprocessors']
                     
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        # First, try to extract info to check if video is accessible
+                        # Try to extract info first
                         try:
+                            print(f"  🔍 Extracting video info...")
                             info = ydl.extract_info(youtubeUrl, download=False)
-                            print(f"✅ Video info extracted: {info.get('title', 'Unknown')} - Duration: {info.get('duration', 'Unknown')}s")
+                            if info:
+                                print(f"  ✅ Video: '{info.get('title', 'Unknown')}' - {info.get('duration', 0)}s")
+                                
+                                # Check if video is age-restricted or requires auth
+                                if info.get('age_limit', 0) > 0:
+                                    print(f"  ⚠️ Video is age-restricted ({info.get('age_limit')}+)")
+                                
                         except Exception as info_error:
-                            print(f"⚠️ Could not extract video info: {info_error}")
-                            # Continue anyway, sometimes download works even if info extraction fails
+                            print(f"  ⚠️ Info extraction failed: {str(info_error)[:100]}")
+                            # Continue anyway - sometimes download works even when info fails
                         
-                        # Now attempt download
+                        # Attempt download
+                        print(f"  ⬇️ Downloading...")
                         ydl.download([youtubeUrl])
                     
                     # Check if download was successful
                     video_files = [f for f in os.listdir(temp_dir) if f.startswith(f'video_attempt_{i}.')]
+                    
                     if video_files:
                         video_file_path = os.path.join(temp_dir, video_files[0])
-                        if os.path.exists(video_file_path) and os.path.getsize(video_file_path) > 1024:  # At least 1KB
-                            # Check if it's video or audio
+                        file_size = os.path.getsize(video_file_path)
+                        
+                        if file_size > 10240:  # At least 10KB
                             file_ext = os.path.splitext(video_files[0])[1].lower()
-                            is_video_content = file_ext in ['.mp4', '.mkv', '.avi', '.mov', '.webm']
+                            is_video_content = file_ext in ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.flv']
                             
-                            # Validate downloaded file
-                            validation = validate_file_for_upload(video_file_path, file_ext.replace('.', '').upper())
-                            print(f"📊 Downloaded file validation: Size={validation.get('file_size_mb', 0):.2f}MB Format={validation.get('format', 'Unknown')}")
-                            
-                            # Show platform compatibility
-                            compatibility = validation.get('platform_compatibility', {})
-                            for platform, compat in compatibility.items():
-                                if platform == "tiktok":
-                                    android_ok = compat.get('android', False) if isinstance(compat, dict) else False
-                                    ios_ok = compat.get('ios', False) if isinstance(compat, dict) else False
-                                    desktop_ok = compat.get('desktop', False) if isinstance(compat, dict) else False
-                                    print(f"  TikTok compatibility: Android({android_ok}) iOS({ios_ok}) Desktop({desktop_ok})")
-                                else:
-                                    is_compat = compat.get('compatible', False) if isinstance(compat, dict) else False
-                                    print(f"  {platform.title()}: {'✓' if is_compat else '✗'}")
+                            print(f"  ✅ Download successful!")
+                            print(f"  📁 File: {video_files[0]}")
+                            print(f"  📏 Size: {file_size / 1024 / 1024:.2f} MB")
+                            print(f"  🎬 Type: {'Video' if is_video_content else 'Audio'}")
                             
                             download_success = True
-                            print(f"✅ {'Video' if is_video_content else 'Audio'} downloaded successfully: {video_files[0]}")
-                            print(f"📏 File size: {os.path.getsize(video_file_path) / 1024 / 1024:.2f} MB")
                             break
                         else:
-                            print(f"❌ Downloaded file is empty or too small")
+                            print(f"  ❌ File too small ({file_size} bytes)")
                     
                 except yt_dlp.utils.DownloadError as dl_error:
-                    print(f"❌ Download error for strategy {i+1}: {dl_error}")
+                    error_msg = str(dl_error)
+                    if 'Sign in to confirm' in error_msg or 'bot' in error_msg.lower():
+                        print(f"  ❌ Bot detection triggered - need cookies authentication")
+                    else:
+                        print(f"  ❌ Download error: {error_msg[:150]}")
+                    
+                    # Add delay between attempts
+                    if i < len(format_strategies) - 1:
+                        time.sleep(3)
                     continue
+                    
                 except Exception as format_error:
-                    print(f"❌ Strategy {i+1} failed: {format_error}")
+                    print(f"  ❌ Strategy failed: {str(format_error)[:150]}")
+                    if i < len(format_strategies) - 1:
+                        time.sleep(2)
                     continue
             
             if not download_success:
-                # Final fallback: Try with different extractor args
-                try:
-                    print("🔄 Final attempt with alternative extractor settings...")
-                    
-                    final_opts = {
-                        'format': 'worst',  # Just get anything that works
-                        'outtmpl': os.path.join(temp_dir, 'final_attempt.%(ext)s'),
-                        'quiet': True,
-                        'no_warnings': True,
-                        'ignoreerrors': True,
-                        'ffmpeg_location': shutil.which('ffmpeg'),
-                        'retries': 3,
-                        'socket_timeout': 30,
-                        
-                        # Try different player client
-                        'extractor_args': {
-                            'youtube': {
-                                'player_client': ['android_creator', 'android_music', 'android_embedded'],
-                                'player_skip': ['configs'],
-                            }
-                        }
-                    }
-                    
-                    with yt_dlp.YoutubeDL(final_opts) as ydl:
-                        ydl.download([youtubeUrl])
-                    
-                    final_files = [f for f in os.listdir(temp_dir) if f.startswith('final_attempt.')]
-                    if final_files:
-                        video_file_path = os.path.join(temp_dir, final_files[0])
-                        if os.path.exists(video_file_path) and os.path.getsize(video_file_path) > 1024:
-                            download_success = True
-                            is_video_content = os.path.splitext(final_files[0])[1].lower() in ['.mp4', '.mkv', '.avi', '.mov', '.webm']
-                            print(f"✅ Final attempt successful: {final_files[0]}")
-                        
-                except Exception as final_error:
-                    print(f"❌ Final attempt also failed: {final_error}")
-            
-            if not download_success:
+                # Provide helpful error message
                 error_msg = """
-                All download methods failed. This could be due to:
-                1. Video is age-restricted or requires sign-in
-                2. Video is private or region-blocked
-                3. YouTube has updated their protection measures
-                4. Network connectivity issues
-                5. The video URL is invalid or video was deleted
-                
-                Suggestions:
-                - Try a different YouTube video
-                - Check if the video is publicly accessible
-                - Ensure the URL is correct and complete
-                - Try again in a few minutes (temporary restrictions)
-                """
-                raise Exception(error_msg)
+    YouTube download failed due to bot detection. Solutions:
 
-            # Transcribe the downloaded video/audio
+    1. **RECOMMENDED: Use Browser Cookies**
+    - Install 'Get cookies.txt LOCALLY' browser extension
+    - Visit YouTube while logged in
+    - Export cookies and save to your VPS
+    - Update code to use: 'cookiefile': '/path/to/cookies.txt'
+
+    2. **Alternative: Use YouTube API**
+    - Get API key from Google Cloud Console
+    - Use official YouTube Data API instead
+
+    3. **Use a Proxy/VPN**
+    - Route requests through residential proxy
+    - Add: 'proxy': 'http://proxy:port' to ydl_opts
+
+    4. **Try Different Video**
+    - Some videos have stricter protection
+    - Private/age-restricted videos won't work
+
+    Current issue: YouTube is blocking automated downloads from your VPS IP.
+    The bot detection message means you need authentication via cookies.
+                """
+                raise Exception(error_msg.strip())
+            
+            # Continue with transcription...
             print("🎤 Starting transcription...")
             try:
                 import whisper
                 model = whisper.load_model("base")
                 result = model.transcribe(video_file_path)
                 extracted_text = result["text"].strip()
-                
-                # Clean up model immediately
                 del model
                 
                 if extracted_text and len(extracted_text) >= 10:
-                    print(f"✅ Transcription completed. Length: {len(extracted_text)} chars")
+                    print(f"✅ Transcription completed: {len(extracted_text)} chars")
                 else:
                     raise Exception("Transcription produced no meaningful text")
                     
@@ -1607,11 +1643,9 @@ async def handle_file_upload(file, fileType, youtubeUrl, current_user,no_of_post
                 
         except Exception as e:
             print(f"❌ YouTube processing failed: {e}")
-            # Clean up
             if 'temp_dir' in locals():
                 shutil.rmtree(temp_dir, ignore_errors=True)
             return {"status": "error", "message": f"YouTube processing failed: {str(e)}"}
-
     # Handle uploaded files with validation
     elif file:
         suffix = os.path.splitext(file.filename)[1].lower()
@@ -1719,7 +1753,9 @@ async def handle_file_upload(file, fileType, youtubeUrl, current_user,no_of_post
     # Generate AI post
     print("🤖 Generating AI post...")
     post_content = generate_post_with_ai(extracted_text,no_of_posts)
-    title = post_content[:50] + "..." if len(post_content) > 50 else post_content
+    print(post_content)
+    title = post_content
+    print("in upload fiel fincop:",title)
     print(f"✅ AI post generated: {len(post_content)} characters")
 
     # Save to database
