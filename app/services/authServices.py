@@ -4,7 +4,7 @@ from app.models.schemas import UserSignup,LoginRequest
 from app.database import get_db_connection
 from app.utils.passwHashing import hash_password,verify_password
 from app.utils.JWT import create_access_token
-
+from fastapi.responses import JSONResponse
 
 
 def signup_user(user:UserSignup):
@@ -25,7 +25,11 @@ def signup_user(user:UserSignup):
 
         user_id=cursor.fetchone()[0]
         conn.commit()
-        return {"message": "User registered successfully", "user_id": user_id}
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content={"message": "User registered successfully", "user_id": user_id}
+        )
+
 
     except psycopg2.errors.UniqueViolation:
         conn.rollback()
