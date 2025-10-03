@@ -19,10 +19,12 @@ from app.routes.clips_route import router as clips_router
 load_dotenv()
 
 # Define CLIP_DIR constant
-CLIP_DIR = os.path.abspath("clips")
+# CLIP_DIR = os.path.abspath("clips")
+# THUMBNAILS_DIR = os.path.join(CLIP_DIR, "thumbnails")
+# CAPTIONS_DIR = os.path.join(CLIP_DIR, "captions")
+CLIP_DIR = os.getenv("CLIPS_DIR", "/tmp/clips")
 THUMBNAILS_DIR = os.path.join(CLIP_DIR, "thumbnails")
 CAPTIONS_DIR = os.path.join(CLIP_DIR, "captions")
-
 # Create directories
 os.makedirs(CLIP_DIR, exist_ok=True)
 os.makedirs(THUMBNAILS_DIR, exist_ok=True)

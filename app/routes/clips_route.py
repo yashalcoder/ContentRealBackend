@@ -13,11 +13,13 @@ from app.database import get_db_connection
 
 router = APIRouter()
 
-# Constants - using your actual directory structure
-CLIP_DIR = r"C:\Users\Yashal Rafique\Desktop\BackendContentRealM\clips"
+# # Constants - using your actual directory structure
+# CLIP_DIR = r"C:\Users\Yashal Rafique\Desktop\BackendContentRealM\clips"
+# THUMBNAILS_DIR = os.path.join(CLIP_DIR, "thumbnails")
+# CAPTIONS_DIR = os.path.join(CLIP_DIR, "captions")
+CLIP_DIR = os.getenv("CLIPS_DIR", "/tmp/clips")
 THUMBNAILS_DIR = os.path.join(CLIP_DIR, "thumbnails")
 CAPTIONS_DIR = os.path.join(CLIP_DIR, "captions")
-
 print(f"📁 Using clips directory: {CLIP_DIR}")
 print(f"📁 Thumbnails directory: {THUMBNAILS_DIR}")
 print(f"📁 Captions directory: {CAPTIONS_DIR}")

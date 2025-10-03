@@ -67,11 +67,14 @@ VIDEO_EXTENSIONS = [".mp4", ".mkv", ".avi", ".mov"]
 # ]
 
 
-# Use absolute paths for Replit
-CLIP_DIR = os.path.abspath("clips")
+# # Use absolute paths for Replit
+# CLIP_DIR = os.path.abspath("clips")
+# THUMBNAILS_DIR = os.path.join(CLIP_DIR, "thumbnails")
+# CAPTIONS_DIR = os.path.join(CLIP_DIR, "captions")
+# Use /tmp for temporary storage (auto-cleanup on restart)
+CLIP_DIR = os.getenv("CLIPS_DIR", "/tmp/clips")
 THUMBNAILS_DIR = os.path.join(CLIP_DIR, "thumbnails")
 CAPTIONS_DIR = os.path.join(CLIP_DIR, "captions")
-
 # Create directories
 os.makedirs(CLIP_DIR, exist_ok=True)
 os.makedirs(THUMBNAILS_DIR, exist_ok=True)
@@ -493,9 +496,11 @@ def cut_clip_with_extras(input_video: str, start: str, end: str, transcript: str
         print(f"❌ Error in cut_clip_with_extras: {e}")
         raise
 
-def generate_post_with_ai(extracted_text: str) -> str:
+def generate_post_with_ai(extracted_text: str,no_of_posts:int) -> str:
     try:
-        prompt = f"Write a short, engaging social media post based on this content:\n\n{extracted_text[:1000]}"
+        print("noi of psots",no_of_posts)
+       
+        prompt = f"Write  {no_of_posts} short, engaging social media post based on this content:\n\n{extracted_text[:1000]}"
         response = openai.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
@@ -1375,7 +1380,10 @@ async def process_clips_with_validation(video_file_path: str, highlights: list, 
         print()
     
     return successful_clips
-async def handle_file_upload(file, fileType, youtubeUrl, current_user):
+async def handle_file_upload(file, fileType, youtubeUrl, current_user,no_of_posts):
+    
+    print("num of posts in handle (after conversion):", no_of_posts)
+    print("type:", type(no_of_posts))
     user_id = current_user["id"]
     print("🚀 Starting file upload processing with validation")
 
@@ -1710,7 +1718,7 @@ async def handle_file_upload(file, fileType, youtubeUrl, current_user):
 
     # Generate AI post
     print("🤖 Generating AI post...")
-    post_content = generate_post_with_ai(extracted_text)
+    post_content = generate_post_with_ai(extracted_text,no_of_posts)
     title = post_content[:50] + "..." if len(post_content) > 50 else post_content
     print(f"✅ AI post generated: {len(post_content)} characters")
 
@@ -1737,7 +1745,37 @@ async def handle_file_upload(file, fileType, youtubeUrl, current_user):
         if post_id and is_video_content and video_file_path:
             try:
                 print(f"🎬 Starting video clip generation from: {video_file_path}")
-                
+                  # Get video duration using ffprobe
+                try:
+                    duration_cmd = [
+                        "ffprobe", "-v", "error", 
+                        "-show_entries", "format=duration", 
+                        "-of", "default=noprint_wrappers=1:nokey=1", 
+                        video_file_path
+                    ]
+                    duration_result = subprocess.run(
+                        duration_cmd, 
+                        capture_output=True, 
+                        text=True, 
+                        timeout=10
+                    )
+                    
+                    if duration_result.returncode == 0:
+                        video_duration = float(duration_result.stdout.strip())
+                        print(f"📹 Video duration: {video_duration:.2f} seconds ({video_duration/60:.2f} minutes)")
+                        
+                        # Convert to HH:MM:SS format for display
+                        hours = int(video_duration // 3600)
+                        minutes = int((video_duration % 3600) // 60)
+                        seconds = int(video_duration % 60)
+                        print(f"📹 Duration formatted: {hours:02d}:{minutes:02d}:{seconds:02d}")
+                    else:
+                        print(f"⚠️ Could not detect video duration, proceeding anyway")
+                        video_duration = None
+                        
+                except Exception as duration_error:
+                    print(f"⚠️ Duration detection failed: {duration_error}")
+                    video_duration = None
                 # Detect highlights using AI
                 print("🔍 Detecting highlights with AI...")
                 highlights = await detect_highlight_timestamps(extracted_text)
