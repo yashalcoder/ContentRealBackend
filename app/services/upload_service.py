@@ -20,7 +20,7 @@ import json
 from PIL import Image
 import asyncio
 from PIL import Image, ImageDraw, ImageFont
-
+import time
 # ADD these imports at the top of your file
 from PIL import Image, ImageDraw, ImageFont
 print("openai key", os.getenv("OPENAI_API_KEY"))
@@ -1519,7 +1519,7 @@ async def handle_file_upload(file, fileType, youtubeUrl, current_user,no_of_post
             download_success = False
             
             # Add delay before first attempt to avoid immediate bot detection
-            import time
+            
             time.sleep(2)
             
             for i, strategy in enumerate(format_strategies):
