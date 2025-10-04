@@ -1829,6 +1829,30 @@ async def handle_file_upload(file, fileType, youtubeUrl, current_user,no_of_post
                         post_id, 
                         extracted_text
                     )
+                        # Inside the if highlights: block, after clip_paths = await process_clips_with_validation(...)
+
+                    if clip_paths:
+                        # Ensure /tmp/clips exists
+                        clips_dir = "/tmp/clips"
+                        os.makedirs(clips_dir, exist_ok=True)
+
+                        for clip in clip_paths:
+                            if clip.get("path") and os.path.exists(clip["path"]):
+                                filename = os.path.basename(clip["path"])
+                                final_path = os.path.join(clips_dir, filename)
+
+                                # Copy clip file into /tmp/clips
+                                shutil.copy2(clip["path"], final_path)
+
+                                # Update clip dict with web URL
+                                clip["url"] = f"/clips/{filename}"
+                                print(f"✅ Saved clip: {final_path} -> URL: {clip['url']}")
+                            else:
+                                print(f"⚠️ Clip file missing: {clip.get('path')}")
+
+                        # Store in memory for later retrieval
+                        store_clips_in_memory(post_id, clip_paths)
+
                     
                     end_time = time.time()
                     print(f"✅ Generated {len(clip_paths)} clips in {end_time - start_time:.1f} seconds")
