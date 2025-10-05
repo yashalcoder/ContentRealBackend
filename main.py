@@ -37,11 +37,14 @@ app = FastAPI(title="Content Creator API", version="1.0.0")
 
 print("🚀 Starting Content Creator API...")
 print(f"📁 Clips directory: {CLIP_DIR}")
-
+origins = [
+    "https://content-real-m.vercel.app",
+    "http://localhost:3000",  # optional for local testing
+]
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Update to specific origins in production
+    allow_origins=origins,  # Update to specific origins in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
